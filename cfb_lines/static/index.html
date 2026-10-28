@@ -44,6 +44,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -88,8 +89,19 @@ td.num, th.num { text-align: right; }
 }
 .badge.ARB { color: var(--good-text); }
 .badge.EV { color: var(--accent); }
-.badge.OFF_MARKET { color: var(--serious); }
 .badge.MIDDLE { color: var(--text-2); }
+.badge.PROMO { color: var(--serious); }
+.badge.OFF_MARKET { color: var(--text-2); }
+.money { font-weight: 700; }
+.money.pos { color: var(--good-text); }
+.money.neg { color: var(--critical); }
+.promo-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; align-items: end; margin-top: 12px; }
+.promo-form label { display: grid; gap: 4px; font-size: 12px; color: var(--text-2); }
+.promo-form input, .promo-form select { width: 100%; }
+.promo-form fieldset { border: none; padding: 0; margin: 0; display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.promo-form fieldset label { display: flex; gap: 4px; align-items: center; }
+.form-error { color: var(--critical); font-size: 13px; margin-top: 8px; }
+.promo-list td { vertical-align: top; }
 .badge.LIVE { color: var(--critical); }
 .stale-tag { color: var(--muted); font-size: 12px; }
 .edge { font-weight: 700; }
@@ -136,6 +148,11 @@ td.num, th.num { text-align: right; }
       <label>Search <input id="q" type="search" placeholder="Team…" size="14"></label>
       <div class="chips" id="typeChips" aria-label="Opportunity types"></div>
       <label>Min EV % <input id="minEv" type="number" step="0.5" min="0" value="2" style="width:64px"></label>
+      <label>Bet size $ <input id="betSize" type="number" step="50" min="1" value="1000" style="width:96px"
+        title="Total cash per play, split across its legs"></label>
+      <label>Round stakes to <select id="roundTo">
+        <option value="0.01">cents</option><option value="1" selected>$1</option><option value="5">$5</option><option value="10">$10</option>
+      </select></label>
       <label><input id="hideStale" type="checkbox"> Hide stale books</label>
       <label><input id="hideLive" type="checkbox"> Hide in-game</label>
     </div>
@@ -147,7 +164,7 @@ td.num, th.num { text-align: right; }
       <table id="opps">
         <thead><tr>
           <th>Type</th><th>Game</th><th>Kickoff</th><th>Bet</th><th>Book</th>
-          <th class="num">Price</th><th class="num">Edge</th><th>Detail</th>
+          <th class="num">Price</th><th class="num">Stake</th><th class="num">Profit</th><th class="num">Edge</th><th>Detail</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -170,6 +187,33 @@ td.num, th.num { text-align: right; }
   </section>
 
   <section class="card">
+    <h2>Promotions <span class="sub">entered by you; each is matched to its best hedge on the board</span></h2>
+    <table class="promo-list" id="promoList"><tbody></tbody></table>
+    <form class="promo-form" id="promoForm">
+      <label>Book <select name="book" required></select></label>
+      <label>Type <select name="type">
+        <option value="profit_boost">Profit boost</option>
+        <option value="bonus_bet">Bonus bet (free bet)</option>
+        <option value="no_sweat">No-sweat / refund as bonus</option>
+      </select></label>
+      <label><span data-amount-label>Max stake $</span><input name="amount" type="number" min="1" step="1" value="50" required></label>
+      <label data-for="profit_boost">Boost % <input name="boost_pct" type="number" min="1" step="1" value="50"></label>
+      <label data-for="no_sweat">Refund worth % <input name="conversion_pct" type="number" min="0" max="100" step="5" value="70"
+        title="How much of a bonus bet you expect to convert to cash (~70% is typical)"></label>
+      <label>Min odds <input name="min_odds" type="number" step="5" placeholder="e.g. -200"></label>
+      <label>Expires <input name="expires" type="datetime-local"></label>
+      <label>Note <input name="note" type="text" placeholder="optional"></label>
+      <fieldset aria-label="Markets">
+        <label><input type="checkbox" name="markets" value="spreads" checked>Spread</label>
+        <label><input type="checkbox" name="markets" value="totals" checked>Total</label>
+        <label><input type="checkbox" name="markets" value="h2h" checked>ML</label>
+      </fieldset>
+      <button type="submit">Add promo</button>
+    </form>
+    <div class="form-error" id="promoError" hidden></div>
+  </section>
+
+  <section class="card">
     <h2>Line moves <span class="sub">latest first</span></h2>
     <div class="moves scroll"><table id="moves"><tbody></tbody></table></div>
   </section>
@@ -177,25 +221,31 @@ td.num, th.num { text-align: right; }
 
 <script>
 const TYPES = [
-  ["ARB", "Arbitrage"], ["EV", "+EV"], ["OFF_MARKET", "Off-market"], ["MIDDLE", "Middle"],
+  ["ARB", "Arbitrage"], ["PROMO", "Promo"], ["EV", "+EV"], ["OFF_MARKET", "Off-market"], ["MIDDLE", "Middle"],
 ];
+const PROMO_TYPES = { profit_boost: "Profit boost", bonus_bet: "Bonus bet", no_sweat: "No-sweat" };
 const MARKETS = [["spreads", "Spread"], ["totals", "Total"], ["h2h", "Moneyline"]];
 const MARKET_NAME = Object.fromEntries(MARKETS);
 
 const state = {
   data: null,
-  types: new Set(["ARB", "EV", "OFF_MARKET", "MIDDLE"]),
+  types: new Set(TYPES.map((t) => t[0])),
   market: "spreads",
   prevCells: new Map(),
 };
 try {
   const saved = JSON.parse(localStorage.getItem("cfb-lines-prefs") || "{}");
-  if (saved.types) state.types = new Set(saved.types);
+  if (saved.types) state.types = new Set(saved.types.concat(saved.seenPromo ? [] : ["PROMO"]));
   if (saved.market) state.market = saved.market;
+  if (saved.betSize) document.getElementById("betSize").value = saved.betSize;
+  if (saved.roundTo) document.getElementById("roundTo").value = saved.roundTo;
 } catch (e) {}
 function savePrefs() {
   try {
-    localStorage.setItem("cfb-lines-prefs", JSON.stringify({ types: [...state.types], market: state.market }));
+    localStorage.setItem("cfb-lines-prefs", JSON.stringify({
+      types: [...state.types], market: state.market, seenPromo: true,
+      betSize: $("betSize").value, roundTo: $("roundTo").value,
+    }));
   } catch (e) {}
 }
 
@@ -204,6 +254,51 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 const fmtPrice = (p) => (p == null ? "" : p > 0 ? `+${p}` : `${p}`);
 const fmtPoint = (p) => (p == null ? "" : p === 0 ? "PK" : p > 0 ? `+${p}` : `${p}`);
 const fmtTime = (iso) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+const fmtMoney = (x) => {
+  const s = Math.abs(x).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${x < -0.005 ? "−" : "+"}$${s}`;
+};
+const fmtStake = (x) => `$${x.toLocaleString(undefined, { minimumFractionDigits: x % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+
+// Mirrors cfb_lines/sizing.py: stake_i ∝ 1 / (win_i + loss_i) equalizes every outcome.
+function sizePlay(o, total, step) {
+  const { mode, units, fixed } = o.sizing;
+  let stakes;
+  if (mode === "single") {
+    stakes = [total];
+  } else {
+    const w = units.map((u) => 1 / (u.win + u.loss));
+    const scale = fixed ? fixed[1] / w[fixed[0]] : total / w.reduce((a, wi, i) => a + wi * units[i].cash, 0);
+    stakes = w.map((wi) => wi * scale);
+  }
+  stakes = stakes.map((s, i) => (fixed && fixed[0] === i ? Math.round(s * 100) / 100
+    : Math.max(step, Math.round(s / step) * step)));
+  const losses = stakes.map((s, i) => s * units[i].loss);
+  const lossSum = losses.reduce((a, b) => a + b, 0);
+  const outs = stakes.map((s, i) => s * units[i].win - (lossSum - losses[i]));
+  const allWin = stakes.reduce((a, s, i) => a + s * units[i].win, 0);
+  const cash = stakes.reduce((a, s, i) => a + s * units[i].cash, 0);
+  return { stakes, outs, allWin, cash, min: Math.min(...outs), max: Math.max(...outs) };
+}
+
+function profitCell(o, sz) {
+  const cls = (x) => `money ${x > 0.005 ? "pos" : x < -0.005 ? "neg" : ""}`;
+  const m = (x) => `<span class="${cls(x)}">${fmtMoney(x)}</span>`;
+  const middle = o.sizing.middle ? `<div class="sub">${m(sz.allWin)} if middle hits</div>` : "";
+  switch (o.type) {
+    case "ARB":
+      return `${m(sz.min)}<div class="sub">locked${sz.max - sz.min > 0.01 ? ` (up to ${fmtMoney(sz.max)})` : ""}</div>${middle}`;
+    case "PROMO":
+      return `${m(sz.min)}<div class="sub">locked · ${fmtStake(sz.cash)} cash in</div>${middle}`;
+    case "MIDDLE":
+      return `${m(sz.allWin)}<div class="sub">if it hits; ${fmtMoney(sz.min)} if not</div>`;
+    case "EV":
+      return `${m(o.edge * sz.stakes[0])}<div class="sub">expected · wins ${fmtMoney(sz.outs[0])}</div>`;
+    default:
+      return `${m(sz.outs[0])}<div class="sub">if it wins</div>`;
+  }
+}
+
 function ago(iso) {
   if (!iso) return "never";
   const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
@@ -264,13 +359,17 @@ function renderOpps(f) {
   $("oppCount").textContent = `${rows.length} shown`;
   const tbody = $("opps").querySelector("tbody");
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty">Nothing matches the current filters.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="empty">Nothing matches the current filters.</td></tr>`;
     return;
   }
+  const total = Math.max(1, parseFloat($("betSize").value) || 0);
+  const step = parseFloat($("roundTo").value);
   tbody.innerHTML = rows.map((o) => {
     const legs = o.legs;
+    const sz = sizePlay(o, total, step);
     const label = TYPES.find((t) => t[0] === o.type)[1];
-    const edge = o.type === "OFF_MARKET" || o.type === "MIDDLE" ? `${o.edge} pts` : `${(o.edge * 100).toFixed(2)}%`;
+    const edge = o.type === "OFF_MARKET" || o.type === "MIDDLE" ? `${o.edge} pts`
+      : o.type === "PROMO" ? `${(o.edge * 100).toFixed(1)}% conv.` : `${(o.edge * 100).toFixed(2)}%`;
     const legCell = (fn) => legs.map(fn).join("<br>");
     return `<tr>
       <td><span class="badge ${o.type}">${label}</span>${o.live ? ' <span class="badge LIVE">LIVE</span>' : ""}</td>
@@ -279,7 +378,9 @@ function renderOpps(f) {
       <td>${legCell((l) => esc(l.label))}</td>
       <td>${legCell((l) => esc(l.book_title) + (l.stale ? ' <span class="stale-tag" title="Book has not updated recently">⏱ stale</span>' : ""))}</td>
       <td class="num">${legCell((l) => fmtPrice(l.price))}</td>
-      <td class="num edge ${o.type === "ARB" || o.type === "EV" ? "pos" : ""}">${edge}</td>
+      <td class="num">${legCell((l, i) => fmtStake(sz.stakes[i]) + (l.promo ? ` <span class="sub">${esc(l.promo)}</span>` : ""))}</td>
+      <td class="num">${profitCell(o, sz)}</td>
+      <td class="num edge ${["ARB", "EV", "PROMO"].includes(o.type) ? "pos" : ""}">${edge}</td>
       <td class="sub">${esc(o.detail)}</td>
     </tr>`;
   }).join("");
@@ -355,6 +456,80 @@ function renderMoves(f) {
   }).join("");
 }
 
+function renderPromos() {
+  const promos = state.data.promos || [];
+  const counts = {};
+  for (const o of state.data.opportunities) if (o.type === "PROMO") counts[o.promo_id] = (counts[o.promo_id] || 0) + 1;
+  const titles = Object.fromEntries(state.data.books.map((b) => [b.key, b.title]));
+  const tbody = $("promoList").querySelector("tbody");
+  tbody.innerHTML = promos.length ? promos.map((p) => {
+    const terms = [
+      p.type === "profit_boost" ? `+${p.boost_pct}% profit, max $${p.amount}` :
+      p.type === "bonus_bet" ? `$${p.amount} bonus bet` : `$${p.amount} no-sweat (refund ≈ ${p.conversion_pct}%)`,
+      p.min_odds != null ? `odds ≥ ${fmtPrice(p.min_odds)}` : "",
+      p.markets.length < 3 ? p.markets.map((k) => MARKET_NAME[k]).join("/") : "",
+      p.expires ? `expires ${fmtTime(p.expires)}` : "",
+    ].filter(Boolean).join(" · ");
+    const n = counts[p.id] || 0;
+    return `<tr>
+      <td><span class="badge PROMO">${PROMO_TYPES[p.type]}</span></td>
+      <td><b>${esc(titles[p.book] || p.book)}</b><div class="sub">${esc(p.note)}</div></td>
+      <td>${esc(terms)}</td>
+      <td class="sub">${n ? `${n} play${n > 1 ? "s" : ""} in Opportunities` : "no hedge found right now"}</td>
+      <td class="num"><button data-del="${esc(p.id)}">Remove</button></td>
+    </tr>`;
+  }).join("") : `<tr><td class="empty">No promos yet. Add the boosts, bonus bets and no-sweats in your accounts below.</td></tr>`;
+
+  const sel = $("promoForm").elements.book;
+  const current = sel.value;
+  const options = state.data.books.map((b) => `<option value="${esc(b.key)}">${esc(b.title)}</option>`).join("");
+  if (sel.dataset.options !== options) {
+    sel.innerHTML = options;
+    sel.dataset.options = options;
+    if (current) sel.value = current;
+  }
+}
+
+function syncPromoForm() {
+  const f = $("promoForm");
+  const type = f.elements.type.value;
+  for (const el of f.querySelectorAll("[data-for]")) el.hidden = el.dataset.for !== type;
+  f.querySelector("[data-amount-label]").textContent = type === "bonus_bet" ? "Bonus amount $" : "Max stake $";
+}
+
+$("promoForm").elements.type.addEventListener("change", syncPromoForm);
+$("promoForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const num = (name) => (f.elements[name].value === "" ? null : Number(f.elements[name].value));
+  const body = {
+    book: f.elements.book.value,
+    type: f.elements.type.value,
+    amount: num("amount"),
+    min_odds: num("min_odds"),
+    markets: [...f.querySelectorAll("input[name=markets]:checked")].map((c) => c.value),
+    note: f.elements.note.value,
+    expires: f.elements.expires.value ? new Date(f.elements.expires.value).toISOString() : null,
+  };
+  if (body.type === "profit_boost") body.boost_pct = num("boost_pct");
+  if (body.type === "no_sweat") body.conversion_pct = num("conversion_pct");
+  const res = await fetch("api/promos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const err = $("promoError");
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({}))).detail;
+    err.textContent = Array.isArray(detail) ? detail.map((d) => d.msg).join("; ") : detail || `Error ${res.status}`;
+    err.hidden = false;
+    return;
+  }
+  err.hidden = true;
+  f.elements.note.value = "";
+});
+$("promoList").addEventListener("click", async (e) => {
+  const id = e.target.dataset && e.target.dataset.del;
+  if (id) await fetch(`api/promos/${encodeURIComponent(id)}`, { method: "DELETE" });
+});
+syncPromoForm();
+
 function render() {
   chips($("typeChips"), TYPES, (k) => state.types.has(k), (k) => {
     state.types.has(k) ? state.types.delete(k) : state.types.add(k); savePrefs();
@@ -367,10 +542,12 @@ function render() {
   renderStatus();
   renderOpps(f);
   renderBoard(f);
+  renderPromos();
   renderMoves(f);
 }
 
 for (const id of ["q", "minEv", "hideStale", "hideLive"]) $(id).addEventListener("input", render);
+for (const id of ["betSize", "roundTo"]) $(id).addEventListener("input", () => { savePrefs(); render(); });
 $("refresh").onclick = async () => {
   $("refresh").disabled = true;
   try { await fetch("api/refresh", { method: "POST" }); } finally { $("refresh").disabled = false; }

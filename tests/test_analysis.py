@@ -158,3 +158,50 @@ def test_consensus_line_is_most_quoted_number():
     cons = s["games"][0]["consensus"][SPREADS]
     assert cons["line"] == -20.5
     assert cons["fair_price_a"] == 100
+
+
+def _promo(**kw):
+    from cfb_lines.promos import Promo
+    return Promo(id="p1", **kw)
+
+
+def test_bonus_bet_finds_best_hedge():
+    g = game(
+        ("draftkings", {"ml": (-400, 300)}, 0),
+        ("fanduel", {"ml": (-350, 280)}, 0),
+        ("betmgm", {"ml": (-380, 290)}, 0),
+    )
+    s = build_snapshot([g], Settings(), now=NOW, promos=[_promo(book="draftkings", type="bonus_bet", amount=100)])
+    plays = opps(s, "PROMO")
+    assert plays, s["opportunities"]
+    best = plays[0]
+    # Bonus on the +300 dog at DraftKings, hedged on the favorite at FanDuel's -350.
+    assert [(l["book"], l["price"]) for l in best["legs"]] == [("draftkings", 300), ("fanduel", -350)]
+    assert best["legs"][0]["promo"] == "bonus bet"
+    assert best["edge"] == pytest.approx(3 * (100 / 350) / (1 + 100 / 350), abs=1e-3)
+    assert best["sizing"]["fixed"] == [0, 100]
+    assert best["sizing"]["units"][0]["cash"] == 0
+
+
+def test_promo_respects_min_odds_markets_and_expiry():
+    g = game(
+        ("draftkings", {"ml": (-400, 300), "spread": (-7, -110, -110)}, 0),
+        ("fanduel", {"ml": (-350, 280), "spread": (-7, -110, -110)}, 0),
+    )
+    promo = _promo(book="draftkings", type="profit_boost", amount=50, boost_pct=50,
+                   min_odds=-200, markets=["h2h"])
+    plays = opps(build_snapshot([g], Settings(), now=NOW, promos=[promo]), "PROMO")
+    assert [p["legs"][0]["label"] for p in plays] == [f"{AWAY} ML"]
+    expired = _promo(book="draftkings", type="bonus_bet", amount=50, expires=NOW - timedelta(hours=1))
+    assert opps(build_snapshot([g], Settings(), now=NOW, promos=[expired]), "PROMO") == []
+
+
+def test_every_opportunity_has_sizing():
+    s = snap(game(
+        ("pinnacle", {"ml": (-200, 180), "spread": (-7, -105, -105)}, 0),
+        ("draftkings", {"ml": (-105, -115), "spread": (-5, -110, -110)}, 0),
+        ("fanduel", {"ml": (-125, 230), "spread": (-7, -110, -110)}, 0),
+    ))
+    assert {o["type"] for o in s["opportunities"]} >= {"ARB", "EV", "OFF_MARKET", "MIDDLE"}
+    for o in s["opportunities"]:
+        assert len(o["sizing"]["units"]) == len(o["legs"])

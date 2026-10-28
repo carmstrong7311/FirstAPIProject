@@ -51,6 +51,7 @@ class Settings:
     min_consensus_books: int = 2        # other books needed at same line to build a fair price
 
     history_db: str = ""                # optional SQLite path to log every line move
+    promos_file: str = "promos.json"    # where hand-entered promos are saved; "" = memory only
 
     @property
     def fetch_cost(self) -> int:
@@ -92,4 +93,5 @@ class Settings:
             if name.upper() in env:
                 setattr(s, name, cast(env[name.upper()]))
         s.history_db = env.get("HISTORY_DB", s.history_db)
+        s.promos_file = env.get("PROMOS_FILE", s.promos_file)
         return s

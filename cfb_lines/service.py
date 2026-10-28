@@ -10,16 +10,20 @@ from typing import Any
 from .analysis import build_snapshot
 from .config import Settings
 from .history import LineHistory
+from .models import Game
+from .promos import PromoStore
 from .providers import Provider
 
 log = logging.getLogger(__name__)
 
 
 class LineService:
-    def __init__(self, settings: Settings, provider: Provider):
+    def __init__(self, settings: Settings, provider: Provider, promos: PromoStore | None = None):
         self.settings = settings
         self.provider = provider
         self.history = LineHistory(settings.history_db)
+        self.promos = promos if promos is not None else PromoStore(settings.promos_file)
+        self.games: list[Game] = []
         self.snapshot: dict[str, Any] | None = None
         self.status: dict[str, Any] = {
             "provider": provider.name,
@@ -50,6 +54,7 @@ class LineService:
             **(self.snapshot or {"games": [], "opportunities": [], "books": []}),
             "status": self.status,
             "recent_moves": list(self.history.recent)[:100],
+            "promos": [p.model_dump(mode="json") for p in self.promos.list()],
         }
 
     def _broadcast(self) -> None:
@@ -64,7 +69,8 @@ class LineService:
         result = await self.provider.fetch()
         now = datetime.now(timezone.utc)
         moves = self.history.record(result.games, now)
-        self.snapshot = build_snapshot(result.games, self.settings, now)
+        self.games = result.games
+        self.snapshot = build_snapshot(result.games, self.settings, now, self.promos.list())
         self.status.update(
             last_poll=now.isoformat(),
             last_error=None,
@@ -105,6 +111,11 @@ class LineService:
             except asyncio.TimeoutError:
                 pass
             self._wake.clear()
+
+    def reanalyze(self) -> None:
+        """Re-run the analysis on the last fetched lines (e.g. after promos change)."""
+        self.snapshot = build_snapshot(self.games, self.settings, promos=self.promos.list())
+        self._broadcast()
 
     async def refresh_now(self) -> None:
         """Manual poll that ignores the credit reserve."""

@@ -11,9 +11,39 @@ moneyline side by side, and ranks what's off:
 | **Off-market** | A book's spread/total sits ≥ 1 / 1.5 points from the most-quoted line. Notes when it crosses a key number (3, 7, 10, 14, ...). |
 | **Middle** | Opposite sides at two books leave a window where both bets win. |
 | **Stale** | Tag on any book that hasn't updated in `STALE_SECONDS` while others have. A stale book that's also off-market is usually the best spot on the board. |
+| **Promo** | Best hedged use of each promo you've entered (see below). |
 
 The lines board outlines the best available number on each side, shades +EV and off-market
 cells, and flashes cells as they move. A line-move feed sits underneath.
+
+## Bet sizing
+
+Enter a **Bet size** at the top and every opportunity shows the stake for each leg and the
+resulting profit, using the same total cash per play:
+
+- **Arbitrage / Promo:** stakes are split so every outcome pays the same; profit shown is the
+  guaranteed amount after rounding (and the upside if a middle also hits).
+- **Middle:** equal-payout split; shows the win if the middle hits and the cost if it misses.
+- **+EV:** the full amount on one leg; shows expected profit and the payout if it wins.
+
+**Round stakes to** ($1 / $5 / $10) rounds each leg to amounts that look normal to a book;
+the profit shown is recomputed on the rounded stakes.
+
+## Promotions
+
+No odds feed publishes promos in a usable form: they're personalized by account and state.
+So you enter the ones in your accounts (Promotions panel, or `POST /api/promos`) and the app
+finds the best hedge for each against the live lines, ranks the top 3 plays per promo, and
+sizes both legs:
+
+| Promo | How it's valued |
+|---|---|
+| **Bonus bet** | Stake isn't returned, so it's placed on a longshot and hedged with cash. Shows the % converted to cash. |
+| **Profit boost** | Winnings multiplied by (1 + boost) up to the max stake, hedged at another book. |
+| **No-sweat** | A losing bet is refunded as a bonus bet, valued at your expected conversion (70% default). |
+
+Promos can be limited by minimum odds, market and expiry, and are saved to `promos.json`.
+The unhedged EV is also shown when a fair price is available, in case you'd rather not hedge.
 
 ## Run it
 
@@ -54,6 +84,7 @@ BetOnline, LowVig, Pinnacle and others in a single call. Things to know:
 | `GET /api/stream` | Server-sent events; a full snapshot after every poll |
 | `GET /api/games/{id}/history` | Recent price/line history per book and side |
 | `POST /api/refresh` | Poll now |
+| `GET/POST /api/promos`, `DELETE /api/promos/{id}` | Manage promos |
 
 Set `HISTORY_DB` to log every line move to SQLite (`line_moves` table) for closing-line
 value tracking or backtesting your thresholds.
@@ -64,7 +95,9 @@ value tracking or backtesting your thresholds.
 cfb_lines/
   providers/odds_api.py   The Odds API client -> normalized Game/Quote models
   providers/demo.py       Synthetic market for running without a key
-  analysis.py             Fair prices, +EV, arbs, middles, off-market and stale detection
+  analysis.py             Fair prices, +EV, arbs, middles, off-market, stale and promo plays
+  sizing.py               Stake split and profit for cash, bonus, boosted and no-sweat legs
+  promos.py               Promo model and JSON store
   history.py              Line-move tracking (memory + optional SQLite)
   service.py              Poll loop, credit guard, fan-out to browsers
   app.py                  FastAPI routes

@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
 from .config import Settings
+from .promos import Promo, PromoIn
 from .providers import make_provider
 from .service import LineService
 
@@ -66,6 +67,24 @@ def create_app(service: LineService | None = None, autostart: bool = True) -> Fa
         if not series:
             raise HTTPException(404, "unknown game")
         return series
+
+    @app.get("/api/promos")
+    async def list_promos(request: Request) -> list[Promo]:
+        return request.app.state.service.promos.list()
+
+    @app.post("/api/promos", status_code=201)
+    async def add_promo(request: Request, promo: PromoIn) -> Promo:
+        svc: LineService = request.app.state.service
+        created = svc.promos.add(promo)
+        svc.reanalyze()
+        return created
+
+    @app.delete("/api/promos/{promo_id}", status_code=204)
+    async def delete_promo(request: Request, promo_id: str) -> None:
+        svc: LineService = request.app.state.service
+        if not svc.promos.remove(promo_id):
+            raise HTTPException(404, "unknown promo")
+        svc.reanalyze()
 
     @app.post("/api/refresh")
     async def refresh(request: Request):

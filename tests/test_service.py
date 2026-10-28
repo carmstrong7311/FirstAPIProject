@@ -47,7 +47,7 @@ class FakeProvider:
 def test_poller_pauses_when_credits_run_low():
     async def scenario():
         provider = FakeProvider(remaining=10)
-        settings = Settings(provider="odds_api", poll_seconds=0.01, min_credits_reserve=50)
+        settings = Settings(provider="odds_api", poll_seconds=0.01, min_credits_reserve=50, promos_file="")
         svc = LineService(settings, provider)
         svc.start()
         await asyncio.sleep(0.1)
@@ -60,7 +60,7 @@ def test_poller_pauses_when_credits_run_low():
 
 
 def test_api_endpoints():
-    svc = LineService(Settings(), DemoProvider(seed=3))
+    svc = LineService(Settings(promos_file=""), DemoProvider(seed=3))
     app = create_app(svc, autostart=False)
     with TestClient(app) as client:
         assert client.get("/").status_code == 200
@@ -75,3 +75,25 @@ def test_api_endpoints():
         assert client.get("/api/games/nope/history").status_code == 404
         for o in client.get("/api/opportunities", params={"type": "arb,ev"}).json():
             assert o["type"] in {"ARB", "EV"}
+
+
+def test_promo_api_round_trip(tmp_path):
+    from cfb_lines.promos import PromoStore
+
+    path = tmp_path / "promos.json"
+    svc = LineService(Settings(), DemoProvider(seed=3), PromoStore(str(path)))
+    app = create_app(svc, autostart=False)
+    with TestClient(app) as client:
+        client.post("/api/refresh")
+        bad = client.post("/api/promos", json={"book": "draftkings", "type": "profit_boost", "amount": 25})
+        assert bad.status_code == 422  # boost needs boost_pct
+        created = client.post("/api/promos", json={"book": "draftkings", "type": "bonus_bet", "amount": 100}).json()
+        snap = client.get("/api/snapshot").json()
+        assert [p["id"] for p in snap["promos"]] == [created["id"]]
+        plays = [o for o in snap["opportunities"] if o["type"] == "PROMO"]
+        assert 1 <= len(plays) <= 3
+        assert all(o["legs"][0]["book"] == "draftkings" for o in plays)
+        assert PromoStore(str(path)).list()[0].id == created["id"]  # persisted
+        assert client.delete(f"/api/promos/{created['id']}").status_code == 204
+        assert client.delete(f"/api/promos/{created['id']}").status_code == 404
+        assert not [o for o in client.get("/api/snapshot").json()["opportunities"] if o["type"] == "PROMO"]
