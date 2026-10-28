@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CFB Lines</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f1;
+  --surface: #fcfcfb;
+  --surface-2: #f0efea;
+  --text: #0b0b0b;
+  --text-2: #52514e;
+  --muted: #8a8983;
+  --grid: #e1e0d9;
+  --border: rgba(11, 11, 11, 0.10);
+  --accent: #2a78d6;
+  --good: #0ca30c;
+  --good-text: #006300;
+  --good-wash: rgba(12, 163, 12, 0.12);
+  --warning: #fab219;
+  --warning-wash: rgba(250, 178, 25, 0.18);
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --flash: rgba(42, 120, 214, 0.22);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211;
+    --surface: #1a1a19;
+    --surface-2: #232321;
+    --text: #f0efec;
+    --text-2: #c3c2b7;
+    --muted: #8a8983;
+    --grid: #2c2c2a;
+    --border: rgba(255, 255, 255, 0.10);
+    --accent: #3987e5;
+    --good-text: #0ca30c;
+    --good-wash: rgba(12, 163, 12, 0.18);
+    --warning-wash: rgba(250, 178, 25, 0.14);
+    --flash: rgba(57, 135, 229, 0.30);
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+  padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 5;
+}
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.status { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--text-2); font-size: 13px; }
+.status b { color: var(--text); font-weight: 600; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
+.dot.live { background: var(--good); }
+.dot.err { background: var(--critical); }
+.spacer { flex: 1; }
+button, input, select {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px;
+}
+button { cursor: pointer; }
+button:hover { background: var(--surface-2); }
+main { padding: 16px 20px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.alert { border-color: var(--critical); color: var(--critical); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.filters label { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+.chip[aria-pressed="true"] { background: var(--text); color: var(--surface); border-color: var(--text); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { font-size: 12px; font-weight: 600; color: var(--text-2); position: sticky; top: 0; background: var(--surface); }
+td.num, th.num { text-align: right; }
+.sub { color: var(--muted); font-size: 12px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 4px;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em; border: 1px solid currentColor;
+}
+.badge.ARB { color: var(--good-text); }
+.badge.EV { color: var(--accent); }
+.badge.OFF_MARKET { color: var(--serious); }
+.badge.MIDDLE { color: var(--text-2); }
+.badge.LIVE { color: var(--critical); }
+.stale-tag { color: var(--muted); font-size: 12px; }
+.edge { font-weight: 700; }
+.edge.pos { color: var(--good-text); }
+/* lines board */
+.board td.game { min-width: 210px; }
+.board td.cell { text-align: center; min-width: 78px; border-left: 1px solid var(--grid); }
+.board tr.top td { border-bottom: none; padding-bottom: 1px; }
+.board tr.bottom td { padding-top: 1px; }
+.board tr.bottom td.game, .board tr.top td.game { padding-left: 8px; }
+.cell .pt { display: block; font-weight: 600; }
+.cell .pr { display: block; color: var(--text-2); font-size: 12px; }
+.cell.best { box-shadow: inset 0 0 0 2px var(--good); }
+.cell.ev { background: var(--good-wash); }
+.cell.off { background: var(--warning-wash); }
+.cell.stale { opacity: .45; }
+.cell.flash { animation: flash 2.5s ease-out; }
+@keyframes flash { from { background: var(--flash); } }
+.fair { color: var(--text-2); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-2); margin-top: 10px; }
+.sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; margin-right: 5px; border: 1px solid var(--border); }
+.moves { max-height: 320px; overflow-y: auto; }
+.up { color: var(--good-text); }
+.down { color: var(--critical); }
+.empty { color: var(--muted); padding: 10px 0; }
+@media (max-width: 640px) {
+  header, main { padding-left: 16px; padding-right: 16px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>CFB Lines</h1>
+  <div class="status" id="status"><span><span class="dot"></span>Connecting…</span></div>
+  <div class="spacer"></div>
+  <button id="refresh" title="Poll the feed now (ignores the credit reserve)">Refresh now</button>
+</header>
+
+<main>
+  <div class="card alert" id="alert" hidden></div>
+
+  <section class="card">
+    <div class="filters">
+      <label>Search <input id="q" type="search" placeholder="Team…" size="14"></label>
+      <div class="chips" id="typeChips" aria-label="Opportunity types"></div>
+      <label>Min EV % <input id="minEv" type="number" step="0.5" min="0" value="2" style="width:64px"></label>
+      <label><input id="hideStale" type="checkbox"> Hide stale books</label>
+      <label><input id="hideLive" type="checkbox"> Hide in-game</label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Opportunities <span class="sub" id="oppCount"></span></h2>
+    <div class="scroll">
+      <table id="opps">
+        <thead><tr>
+          <th>Type</th><th>Game</th><th>Kickoff</th><th>Bet</th><th>Book</th>
+          <th class="num">Price</th><th class="num">Edge</th><th>Detail</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="filters" style="margin-bottom:10px">
+      <h2 style="margin:0">Lines board</h2>
+      <div class="chips" id="marketChips" aria-label="Market"></div>
+    </div>
+    <div class="scroll"><table class="board" id="board"></table></div>
+    <div class="legend">
+      <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--good)"></span>Best available</span>
+      <span><span class="sw" style="background:var(--good-wash)"></span>+EV vs fair</span>
+      <span><span class="sw" style="background:var(--warning-wash)"></span>Off-market line</span>
+      <span><span class="sw" style="opacity:.45;background:var(--surface-2)"></span>Stale book</span>
+      <span><span class="sw" style="background:var(--flash)"></span>Just moved</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Line moves <span class="sub">latest first</span></h2>
+    <div class="moves scroll"><table id="moves"><tbody></tbody></table></div>
+  </section>
+</main>
+
+<script>
+const TYPES = [
+  ["ARB", "Arbitrage"], ["EV", "+EV"], ["OFF_MARKET", "Off-market"], ["MIDDLE", "Middle"],
+];
+const MARKETS = [["spreads", "Spread"], ["totals", "Total"], ["h2h", "Moneyline"]];
+const MARKET_NAME = Object.fromEntries(MARKETS);
+
+const state = {
+  data: null,
+  types: new Set(["ARB", "EV", "OFF_MARKET", "MIDDLE"]),
+  market: "spreads",
+  prevCells: new Map(),
+};
+try {
+  const saved = JSON.parse(localStorage.getItem("cfb-lines-prefs") || "{}");
+  if (saved.types) state.types = new Set(saved.types);
+  if (saved.market) state.market = saved.market;
+} catch (e) {}
+function savePrefs() {
+  try {
+    localStorage.setItem("cfb-lines-prefs", JSON.stringify({ types: [...state.types], market: state.market }));
+  } catch (e) {}
+}
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fmtPrice = (p) => (p == null ? "" : p > 0 ? `+${p}` : `${p}`);
+const fmtPoint = (p) => (p == null ? "" : p === 0 ? "PK" : p > 0 ? `+${p}` : `${p}`);
+const fmtTime = (iso) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+function ago(iso) {
+  if (!iso) return "never";
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
+  return s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ${s % 60}s ago`;
+}
+
+function chips(el, items, isOn, onClick) {
+  el.innerHTML = "";
+  for (const [key, label] of items) {
+    const b = document.createElement("button");
+    b.className = "chip";
+    b.textContent = label;
+    b.setAttribute("aria-pressed", isOn(key));
+    b.onclick = () => { onClick(key); render(); };
+    el.appendChild(b);
+  }
+}
+
+function filters() {
+  return {
+    q: $("q").value.trim().toLowerCase(),
+    minEv: parseFloat($("minEv").value || "0") / 100,
+    hideStale: $("hideStale").checked,
+    hideLive: $("hideLive").checked,
+  };
+}
+
+function gameVisible(g, f) {
+  if (f.hideLive && g.live) return false;
+  return !f.q || `${g.home} ${g.away}`.toLowerCase().includes(f.q);
+}
+
+function renderStatus() {
+  const st = state.data.status;
+  const bits = [];
+  const ok = !st.last_error && !st.paused;
+  bits.push(`<span><span class="dot ${ok ? "live" : "err"}"></span><b>${esc(st.provider)}</b></span>`);
+  bits.push(`<span>Updated <b id="age">${ago(st.last_poll)}</b> · every ${st.poll_seconds}s</span>`);
+  bits.push(`<span><b>${state.data.games.length}</b> games · <b>${state.data.books.length}</b> books</span>`);
+  if (st.credits_remaining != null) {
+    bits.push(`<span>API credits left <b>${st.credits_remaining.toLocaleString()}</b> (${st.fetch_cost}/poll)</span>`);
+  }
+  $("status").innerHTML = bits.join("");
+  const alert = st.paused || (st.last_error && `Last poll failed: ${st.last_error}`);
+  $("alert").hidden = !alert;
+  $("alert").textContent = alert || "";
+}
+
+function renderOpps(f) {
+  const games = new Map(state.data.games.map((g) => [g.id, g]));
+  const rows = state.data.opportunities.filter((o) => {
+    if (!state.types.has(o.type)) return false;
+    if (!gameVisible(games.get(o.game_id), f)) return false;
+    if (f.hideStale && o.legs.some((l) => l.stale)) return false;
+    if (o.type === "EV" && o.edge < f.minEv) return false;
+    return true;
+  });
+  $("oppCount").textContent = `${rows.length} shown`;
+  const tbody = $("opps").querySelector("tbody");
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">Nothing matches the current filters.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((o) => {
+    const legs = o.legs;
+    const label = TYPES.find((t) => t[0] === o.type)[1];
+    const edge = o.type === "OFF_MARKET" || o.type === "MIDDLE" ? `${o.edge} pts` : `${(o.edge * 100).toFixed(2)}%`;
+    const legCell = (fn) => legs.map(fn).join("<br>");
+    return `<tr>
+      <td><span class="badge ${o.type}">${label}</span>${o.live ? ' <span class="badge LIVE">LIVE</span>' : ""}</td>
+      <td>${esc(o.matchup)}<div class="sub">${MARKET_NAME[o.market]}</div></td>
+      <td class="sub">${fmtTime(o.commence_time)}</td>
+      <td>${legCell((l) => esc(l.label))}</td>
+      <td>${legCell((l) => esc(l.book_title) + (l.stale ? ' <span class="stale-tag" title="Book has not updated recently">⏱ stale</span>' : ""))}</td>
+      <td class="num">${legCell((l) => fmtPrice(l.price))}</td>
+      <td class="num edge ${o.type === "ARB" || o.type === "EV" ? "pos" : ""}">${edge}</td>
+      <td class="sub">${esc(o.detail)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderBoard(f) {
+  const m = state.market;
+  const books = state.data.books.filter((b) => !f.hideStale || state.data.games.some((g) => g.books[b.key] && !g.books[b.key].stale));
+  const evThreshold = f.minEv;
+  const offKeys = new Set(
+    state.data.opportunities.filter((o) => o.type === "OFF_MARKET" && o.market === m)
+      .map((o) => `${o.game_id}|${o.legs[0].book}`)
+  );
+  const sides = m === "totals" ? ["over", "under"] : ["away", "home"];
+  let html = `<thead><tr><th>Game</th><th class="num">Fair</th>${books.map((b) => `<th style="text-align:center">${esc(b.title)}</th>`).join("")}</tr></thead><tbody>`;
+  const nextCells = new Map();
+  const visible = state.data.games.filter((g) => gameVisible(g, f));
+  for (const g of visible) {
+    const cons = g.consensus[m] || {};
+    sides.forEach((side, i) => {
+      const name = side === "over" ? "Over" : side === "under" ? "Under" : side === "home" ? g.home : g.away;
+      const isA = side === "home" || side === "over";
+      const fairPrice = isA ? cons.fair_price_a : cons.fair_price_b;
+      let fairPt = "";
+      if (m === "spreads" && cons.line != null) fairPt = fmtPoint(isA ? cons.line : -cons.line);
+      if (m === "totals" && cons.line != null) fairPt = cons.line;
+      const gameCell = i === 0
+        ? `<td class="game" rowspan="1">${esc(name)} ${g.live ? '<span class="badge LIVE">LIVE</span>' : ""}<div class="sub">${fmtTime(g.commence_time)}</div></td>`
+        : `<td class="game">${esc(name)}</td>`;
+      html += `<tr class="${i === 0 ? "top" : "bottom"}">${gameCell}
+        <td class="num fair" title="${esc(cons.fair_source || "")}">${fairPt} ${fairPrice != null ? fmtPrice(fairPrice) : "–"}</td>`;
+      for (const b of books) {
+        const bk = g.books[b.key];
+        const q = bk && bk.markets[m] && bk.markets[m][side];
+        if (!q || (f.hideStale && bk.stale)) { html += `<td class="cell sub">–</td>`; continue; }
+        const key = `${g.id}|${b.key}|${m}|${side}`;
+        const val = `${q.point}|${q.price}`;
+        nextCells.set(key, val);
+        const prev = state.prevCells.get(key);
+        const cls = ["cell"];
+        if ((cons.best && cons.best[side] || []).includes(b.key)) cls.push("best");
+        if (q.ev != null && q.ev >= evThreshold) cls.push("ev");
+        if (offKeys.has(`${g.id}|${b.key}`)) cls.push("off");
+        if (bk.stale) cls.push("stale");
+        if (prev !== undefined && prev !== val) cls.push("flash");
+        const title = `${b.title} · updated ${ago(bk.last_update)}${q.ev != null ? ` · EV ${(q.ev * 100).toFixed(1)}%` : ""}`;
+        html += `<td class="${cls.join(" ")}" title="${esc(title)}">
+          ${m === "h2h" ? "" : `<span class="pt">${m === "spreads" ? fmtPoint(q.point) : q.point}</span>`}
+          <span class="${m === "h2h" ? "pt" : "pr"}">${fmtPrice(q.price)}</span></td>`;
+      }
+      html += `</tr>`;
+    });
+  }
+  if (!visible.length) html += `<tr><td colspan="${books.length + 2}" class="empty">No games.</td></tr>`;
+  $("board").innerHTML = html + "</tbody>";
+  state.prevCells = nextCells;
+}
+
+function renderMoves(f) {
+  const rows = state.data.recent_moves.filter((mv) => !f.q || mv.matchup.toLowerCase().includes(f.q)).slice(0, 60);
+  const tbody = $("moves").querySelector("tbody");
+  if (!rows.length) { tbody.innerHTML = `<tr><td class="empty">No moves yet.</td></tr>`; return; }
+  tbody.innerHTML = rows.map((mv) => {
+    const pt = (p) => (mv.market === "spreads" ? fmtPoint(p) : p ?? "");
+    const dir = mv.to.price > mv.from.price ? "up" : mv.to.price < mv.from.price ? "down" : "";
+    return `<tr>
+      <td class="sub">${new Date(mv.t).toLocaleTimeString()}</td>
+      <td>${esc(mv.matchup)}</td>
+      <td>${esc(mv.book_title)}</td>
+      <td>${MARKET_NAME[mv.market]} · ${esc(mv.side)}</td>
+      <td class="num">${pt(mv.from.point)} ${fmtPrice(mv.from.price)} → <span class="${dir}">${pt(mv.to.point)} ${fmtPrice(mv.to.price)}</span></td>
+    </tr>`;
+  }).join("");
+}
+
+function render() {
+  chips($("typeChips"), TYPES, (k) => state.types.has(k), (k) => {
+    state.types.has(k) ? state.types.delete(k) : state.types.add(k); savePrefs();
+  });
+  chips($("marketChips"), MARKETS, (k) => k === state.market, (k) => {
+    state.market = k; state.prevCells = new Map(); savePrefs();
+  });
+  if (!state.data) return;
+  const f = filters();
+  renderStatus();
+  renderOpps(f);
+  renderBoard(f);
+  renderMoves(f);
+}
+
+for (const id of ["q", "minEv", "hideStale", "hideLive"]) $(id).addEventListener("input", render);
+$("refresh").onclick = async () => {
+  $("refresh").disabled = true;
+  try { await fetch("api/refresh", { method: "POST" }); } finally { $("refresh").disabled = false; }
+};
+setInterval(() => {
+  const el = $("age");
+  if (el && state.data) el.textContent = ago(state.data.status.last_poll);
+}, 1000);
+
+function connect() {
+  const es = new EventSource("api/stream");
+  es.onmessage = (e) => { state.data = JSON.parse(e.data); render(); };
+  es.onerror = () => {
+    $("status").innerHTML = `<span><span class="dot err"></span>Disconnected — reconnecting…</span>`;
+  };
+}
+render();
+connect();
+</script>
+</body>
+</html>
