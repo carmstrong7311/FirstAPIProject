@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chicagoland Events</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Every upcoming concert, game, comedy show, street fest and holiday event in Chicagoland, in date order.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Libre+Franklin:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">
+      <svg class="star" viewBox="-10 -10 20 20" aria-hidden="true"><polygon points="0,-10 2.6,-4.5 8.7,-5 5.2,0 8.7,5 2.6,4.5 0,10 -2.6,4.5 -8.7,5 -5.2,0 -8.7,-5 -2.6,-4.5"/></svg>
+      <div>
+        <h1>Chicagoland Events</h1>
+        <p class="tagline">Games, shows, fests and everything else worth leaving the house for. Soonest first.</p>
+      </div>
+    </div>
+    <label class="search" for="q">
+      <span class="visually-hidden">Search events</span>
+      <input id="q" type="search" placeholder="Search Cubs, Hamilton, Old Town, Riot Fest…" autocomplete="off">
+    </label>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="filters" id="filters" aria-label="Filters">
+    <button class="filters-toggle" id="filters-toggle" type="button" aria-expanded="false" aria-controls="filters-body">
+      Filters <span id="active-count" class="pill" hidden></span>
+    </button>
+    <div class="filters-body" id="filters-body">
+      <section>
+        <h2>Category</h2>
+        <div class="chips" id="cat-chips"></div>
+      </section>
+      <section id="sub-section" hidden>
+        <h2 id="sub-heading">Narrow it down</h2>
+        <div id="sub-groups"></div>
+      </section>
+      <section>
+        <h2>When</h2>
+        <div class="chips" id="range-chips"></div>
+        <div class="date-inputs">
+          <label for="from">From <input type="date" id="from"></label>
+          <label for="to">To <input type="date" id="to"></label>
+        </div>
+      </section>
+      <section>
+        <h2>Options</h2>
+        <label class="toggle" for="free"><input type="checkbox" id="free"> Free events only</label>
+        <label class="toggle" for="confirmed"><input type="checkbox" id="confirmed"> Hide estimated dates</label>
+      </section>
+      <button type="button" class="reset" id="reset">Clear all filters</button>
+    </div>
+  </aside>
+
+  <main class="results" id="main">
+    <div class="results-head">
+      <p id="summary" class="summary" aria-live="polite">Loading events…</p>
+    </div>
+    <div id="list"></div>
+    <button type="button" class="more" id="more" hidden>Show more</button>
+    <footer class="foot" id="foot"></footer>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
